@@ -94,15 +94,19 @@ namespace :sidekiq do
   desc "Stop sidekiq"
   task :stop => :environment do
     queue %[echo "-----> Stop sidekiq"]
-    for_each_process do |pid_file, idx|
-      queue %[
-        if [ -f #{pid_file} ] && kill -0 `cat #{pid_file}`> /dev/null 2>&1; then
-          cd "#{deploy_to}/#{current_path}"
-          #{echo_cmd %[#{sidekiqctl} stop #{pid_file} #{sidekiq_timeout}]}
-        else
-          echo 'Skip stopping sidekiq (no pid file found)'
-        fi
-      ]
+    if upstart
+      queue %{sudo stop sidekiq}
+    else
+      for_each_process do |pid_file, idx|
+        queue %[
+          if [ -f #{pid_file} ] && kill -0 `cat #{pid_file}`> /dev/null 2>&1; then
+            cd "#{deploy_to}/#{current_path}"
+            #{echo_cmd %[#{sidekiqctl} stop #{pid_file} #{sidekiq_timeout}]}
+          else
+            echo 'Skip stopping sidekiq (no pid file found)'
+          fi
+        ]
+      end
     end
   end
 
@@ -110,19 +114,29 @@ namespace :sidekiq do
   desc "Start sidekiq"
   task :start => :environment do
     queue %[echo "-----> Start sidekiq"]
-    for_each_process do |pid_file, idx|
+    if upstart
       queue %{
-        cd "#{deploy_to}/#{current_path}"
-        #{echo_cmd %[#{sidekiq} -d -e #{rails_env} -C #{sidekiq_config} #{"-c #{sidekiq_concurrency} " if sidekiq_concurrency}-i #{idx} -P #{pid_file} -L #{sidekiq_log}] }
-        sleep 3
+        sudo start sidekiq
       }
+    else
+      for_each_process do |pid_file, idx|
+        queue %{
+          cd "#{deploy_to}/#{current_path}"
+          #{echo_cmd %[#{sidekiq} -d -e #{rails_env} -C #{sidekiq_config} #{"-c #{sidekiq_concurrency} " if sidekiq_concurrency}-i #{idx} -P #{pid_file} -L #{sidekiq_log}] }
+          sleep 3
+        }
+      end
     end
   end
 
   # ### sidekiq:restart
   desc "Restart sidekiq"
   task :restart do
-    invoke :'sidekiq:stop'
-    invoke :'sidekiq:start'
+    if upstart
+      sudo restart sidekiq
+    else
+      invoke :'sidekiq:stop'
+      invoke :'sidekiq:start'
+    end
   end
 end
