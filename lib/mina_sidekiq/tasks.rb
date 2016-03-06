@@ -133,7 +133,9 @@ namespace :sidekiq do
   desc "Restart sidekiq"
   task :restart do
     if upstart
-      sudo restart sidekiq
+      queue %{
+        sudo restart sidekiq
+      }
     else
       invoke :'sidekiq:stop'
       invoke :'sidekiq:start'
